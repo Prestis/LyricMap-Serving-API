@@ -1,0 +1,11 @@
+services:
+  api:
+    build: .
+    container_name: lyricmap-serving-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./lyricmap.db:/app/lyricmap.db
+    env_file:
+      - .env
+    restart: unless-stopped
