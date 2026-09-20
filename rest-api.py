@@ -19,17 +19,20 @@ from slowapi.errors import RateLimitExceeded
 # Load environment variables
 load_dotenv()
 
-# JWT Configuration
-SECRET_KEY = os.getenv("SECRET_KEY", "7fd98e0a8b9c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e")
+# JWT Configuration - Fail immediately if SECRET_KEY is missing
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise ValueError("CRITICAL ERROR: SECRET_KEY environment variable is not set.")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # Password Hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Admin Credentials
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH", "$2b$12$UH2T7wSJEdcSfrAbSL6Q0uJT8ramsruDrmf1Uf2Fs5iORBG5iPBPq") 
+# Admin Credentials - Fail if admin credentials aren't explicitly configured
+ADMIN_USERNAME = os.getenv("ADMIN_USERNAME")
+ADMIN_PASSWORD_HASH = os.getenv("ADMIN_PASSWORD_HASH")
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
