@@ -1,58 +1,73 @@
 # LyricMap Serving API (Production)
 
-Lightweight, high-performance FastAPI service built to deliver Greek rapper location data to the LyricMap web frontend, handle user error reports, and manage administrative location edits.
+Lightweight FastAPI service that serves the places mentioned in Greek rap lyrics to the LyricMap web frontend (lyricmap.gr), handles user error reports, and lets an admin correct places.
 
 ## 🚀 Features
-- **Ultra-Lightweight**: Requires **< 50 MB RAM** at runtime.
-- **Instant Docker Build**: Takes under 15 seconds to build and run on any 512 MB cloud container (DigitalOcean, Railway, Render, etc.).
-- **Pre-populated Database**: Includes pre-extracted `lyricmap.db` SQLite database with **52 artists**, **983 songs**, and **1,056 location mentions**.
-- **Admin Auth & Reporting**: JWT Authentication, cookie-based security, and rate-limited reporting.
+- **Ultra-Lightweight**: about 75 MB RAM at runtime, so it fits a 512 MB cloud container (DigitalOcean, Railway, Render, etc.).
+- **Pre-populated Database**: `lyricmap.db` (SQLite) holds **477 places** with **1,258 mentions** across **49 artists**, each with the lyric line it appears in, the song's Genius link and its release date.
+- **Map API**: one marker per place, filterable by artist, year and place type.
+- **Admin Auth & Reporting**: JWT authentication in an httpOnly cookie, rate-limited user reports, and admin endpoints to review, rename, move, merge and reject places.
+
+The database is built by the processing repo (LyricMapAPI: Genius lyrics → Greek NER → Claude → OpenStreetMap), which runs locally because NER needs more memory than the server has. This repo only serves the result. The copy here leaves out the full lyrics; only single lyric lines are stored and served.
 
 ---
 
-## 🛠️ How to push to a new GitHub Repository
+## 🗺️ Endpoints
 
-Navigate to this project folder in your terminal and execute:
+All map endpoints accept `?artist=` (case-insensitive), `?year_from=`, `?year_to=` (by release date) and `?type=` (`country`, `region`, `city`, `neighborhood`, `street`, `landmark`, `venue`, `natural`).
 
-```powershell
-# 1. Move into the project directory
-cd lyricmap-serving-api
+| Method | Path | Auth | What it does |
+|---|---|---|---|
+| GET | `/places` | | One marker per place: name, type, coordinates, mention count, artists, first/last year |
+| GET | `/places/{id}/mentions` | | A marker's popup: the place and every lyric line that mentions it |
+| GET | `/locations` | | Every mention grouped by artist (the original shape, plus place, lyric line, release date and song URL) |
+| POST | `/reports` | | Report a wrong location (5/day per IP); `location_id` is a mention id |
+| POST | `/token`, `/auth/logout` | | Admin login / logout (sets / clears the `access_token` cookie) |
+| GET | `/auth/me` | admin | Current admin session |
+| GET, DELETE | `/reports`, `/reports/{id}` | admin | List / resolve reports |
+| GET | `/places/review` | admin | Places flagged for review (estimated coordinates, suspicious name) |
+| GET | `/mentions/rejected` | admin | Mentions rejected as not a place |
+| POST | `/places` | admin | Create a place by hand |
+| PUT | `/places/{id}` | admin | Rename, retype or move a place for all its mentions, or approve it (`needs_review: false`) |
+| POST | `/places/{id}/merge` | admin | Merge a duplicate place into another (`into_place_id`) |
+| PUT | `/mentions/{id}` | admin | Assign a mention to another place (`place_id`) or reject it (`rejected: true`) |
+| PUT | `/locations/{id}` | admin | Set coordinates for one mention only |
 
-# 2. Initialize Git
-git init
+Interactive docs: `/docs`.
 
-# 3. Add all files
-git add .
+---
 
-# 4. Create initial commit
-git commit -m "Initial commit: LyricMap Lightweight Serving API"
+## 🔄 Updating the data
 
-# 5. Rename branch to main
-git branch -M main
+1. **Before rebuilding**, copy the server's `lyricmap.db` back to the processing repo, so admin edits and reports made on the server are exported and kept.
+2. Rebuild there, then copy the new `lyricmap.db` here **with the lyrics stripped** (`UPDATE songs SET lyrics = NULL; UPDATE artists SET bio = NULL; VACUUM;`). This repo is public.
+3. Back up the server's `lyricmap.db`, deploy, and restart the container.
 
-# 6. Link your new GitHub Repository (replace URL with your new GitHub repo link)
-git remote add origin https://github.com/YOUR_USERNAME/LyricMap-Serving-API.git
-
-# 7. Push to GitHub
-git push -u origin main
-```
+Deploying a new database replaces the server's, including any admin edits and reports made there since step 1.
 
 ---
 
 ## 🐳 Docker Deployment (DigitalOcean / VPS)
 
 ### Environment Setup
-Create a `.env` file on your server (refer to `.env.example`):
+Create a `.env` file on your server:
 ```env
 SECRET_KEY=your_strong_random_secret_here
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD_HASH=$$2b$$12$$...
 ALLOWED_ORIGINS=https://lyricmap.gr,http://localhost:4200
 COOKIE_SECURE=true
 ```
+- `SECRET_KEY` signs the admin JWT; the app refuses to start without it.
+- `ADMIN_PASSWORD_HASH` is a bcrypt hash (`python -c "from passlib.context import CryptContext; print(CryptContext(schemes=['bcrypt']).hash('your-password'))"`). Docker Compose treats `$` in `.env` as a variable, so write every `$` as `$$` there. When running without Docker, use single `$`.
+- `ALLOWED_ORIGINS` is a comma-separated CORS list; it defaults to lyricmap.gr and `http://localhost:4200`.
+- `COOKIE_SECURE=true` sends the login cookie over HTTPS only.
 
 ### Run with Docker Compose
 ```bash
 docker compose up --build -d
 ```
+The container mounts `./lyricmap.db`, so admin edits and reports are written to that file.
 
 ---
 
